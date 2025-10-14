@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import RadialMap from './components/RadialMap';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import RadialMapWebGL from './components/RadialMapWebGL';
 import Controls from './components/Controls';
 import { StravaService } from './stravaService';
 import { StravaActivity, RouteData } from './types';
@@ -13,9 +13,10 @@ function App() {
   // const [streams, setStreams] = useState<Record<number, ActivityStream | undefined>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [animationSpeed, setAnimationSpeed] = useState(10);
+  const [animationSpeed, setAnimationSpeed] = useState(20);
   const [scrubTimeSec, setScrubTimeSec] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
+  const radialMapTimeRef = useRef<{ updateTime: (time: number) => void } | null>(null);
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -152,11 +153,13 @@ function App() {
   };
 
   // Continuous timeline: unify play and scrub into a single time state that advances at animationSpeed
+  // Optimized: only update React state every 50ms (20fps) to reduce renders
   useEffect(() => {
     if (!isAnimating || routes.length === 0) return;
     const maxDur = Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100));
     let startWall = performance.now();
     let startTime = scrubTimeSec ?? 0;
+    let lastUpdate = startWall;
     scrubTimeRef.current = startTime;
     let raf: number | null = null;
 
@@ -169,7 +172,11 @@ function App() {
         return;
       }
       scrubTimeRef.current = simTime;
-      setScrubTimeSec(simTime);
+      // Throttle React updates to ~20fps to reduce render overhead
+      if (now - lastUpdate > 50) {
+        setScrubTimeSec(simTime);
+        lastUpdate = now;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -193,6 +200,12 @@ function App() {
     setIsAnimating(false);
   };
 
+  const handleScrubDirect = useCallback((time: number) => {
+    // Update React state for slider visual feedback
+    setScrubTimeSec(time);
+    setIsAnimating(false);
+  }, []);
+
   return (
     <div className="app">
       <Controls
@@ -204,6 +217,7 @@ function App() {
         onResetAnimation={handleResetAnimation}
         onSpeedChange={setAnimationSpeed}
         onScrubChange={(s) => { setScrubTimeSec(s); setIsAnimating(false); }}
+        onScrubDirect={handleScrubDirect}
         isAuthenticated={isAuthenticated}
         isLoading={isLoading}
         isAnimating={isAnimating}
@@ -212,7 +226,7 @@ function App() {
         maxDurationSec={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
         scrubTimeSec={scrubTimeSec}
       />
-      <RadialMap
+      <RadialMapWebGL
         routes={routes}
         isAnimating={isAnimating}
         animationSpeed={animationSpeed}

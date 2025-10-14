@@ -1,3 +1,5 @@
+import { useRef, useEffect } from 'react';
+
 interface ControlsProps {
   onLogin: () => void;
   onLogout: () => void;
@@ -7,6 +9,7 @@ interface ControlsProps {
   onResetAnimation: () => void;
   onSpeedChange: (speed: number) => void;
   onScrubChange?: (seconds: number) => void;
+  onScrubDirect?: (seconds: number) => void; // For immediate ref updates
   isAuthenticated: boolean;
   isLoading: boolean;
   isAnimating: boolean;
@@ -25,6 +28,7 @@ export default function Controls({
   onResetAnimation,
   onSpeedChange,
   onScrubChange,
+  onScrubDirect,
   isAuthenticated,
   isLoading,
   isAnimating,
@@ -33,6 +37,22 @@ export default function Controls({
   maxDurationSec,
   scrubTimeSec,
 }: ControlsProps) {
+  const timelineSliderRef = useRef<HTMLInputElement>(null);
+
+  // Add direct event listener for instant scrubbing (bypasses React)
+  useEffect(() => {
+    const slider = timelineSliderRef.current;
+    if (!slider || !onScrubDirect) return;
+
+    const handleInput = (e: Event) => {
+      const value = Number((e.target as HTMLInputElement).value);
+      onScrubDirect(value); // Update ref immediately
+    };
+
+    slider.addEventListener('input', handleInput);
+    return () => slider.removeEventListener('input', handleInput);
+  }, [onScrubDirect]);
+
   return (
     <div className="controls">
       <div className="controls-header">
@@ -82,7 +102,7 @@ export default function Controls({
             <input
               type="range"
               min="1"
-              max="10"
+              max="50"
               value={animationSpeed}
               onChange={(e) => onSpeedChange(Number(e.target.value))}
               className="speed-slider"
@@ -93,11 +113,12 @@ export default function Controls({
             <div className="speed-control" style={{ marginTop: '0.5rem' }}>
               <div className="speed-label">Timeline</div>
               <input
+                ref={timelineSliderRef}
                 type="range"
                 min={0}
                 max={Math.max(1, Math.floor(maxDurationSec))}
-                step={1}
-                value={Math.floor(scrubTimeSec ?? 0)}
+                step={0.1}
+                value={scrubTimeSec ?? 0}
                 onChange={(e) => onScrubChange(Number(e.target.value))}
                 className="speed-slider"
               />
