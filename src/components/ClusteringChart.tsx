@@ -158,50 +158,7 @@ export default function ClusteringChart({
       ctx.stroke();
     }
 
-    // Draw centroids as X marks
-    if (centroids.length > 0) {
-      centroids.forEach((centroid) => {
-        const x = scaleX(centroid[xFeatureIdx]);
-        const y = scaleY(centroid[yFeatureIdx]);
-        
-        // Draw X mark (cross)
-        ctx.strokeStyle = '#FF0000';
-        ctx.lineWidth = 3;
-        const size = 10;
-        
-        // First diagonal
-        ctx.beginPath();
-        ctx.moveTo(x - size, y - size);
-        ctx.lineTo(x + size, y + size);
-        ctx.stroke();
-        
-        // Second diagonal
-        ctx.beginPath();
-        ctx.moveTo(x + size, y - size);
-        ctx.lineTo(x - size, y + size);
-        ctx.stroke();
-        
-        // Add white outline for contrast
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 5;
-        ctx.globalAlpha = 0.3;
-        
-        ctx.beginPath();
-        ctx.moveTo(x - size, y - size);
-        ctx.lineTo(x + size, y + size);
-        ctx.moveTo(x + size, y - size);
-        ctx.lineTo(x - size, y + size);
-        ctx.stroke();
-        
-        ctx.globalAlpha = 1.0;
-      });
-
-      // Legend for centroids
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-      ctx.font = '10px system-ui, -apple-system';
-      ctx.textAlign = 'left';
-      ctx.fillText('✕ Centroids', padding + 5, padding + 5);
-    }
+    // Centroids removed per user request
 
     // Title
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
@@ -229,8 +186,8 @@ export default function ClusteringChart({
       ref={containerRef}
       style={{
         position: 'fixed',
-        bottom: '240px', // Position above elevation profile
-        right: '20px',
+        bottom: '20px',
+        left: '20px',
         width: `${size.width}px`,
         height: `${size.height}px`,
         background: 'rgba(26, 26, 46, 0.95)',
