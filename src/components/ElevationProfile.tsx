@@ -14,6 +14,8 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
   const [size, setSize] = useState({ width: 400, height: 200 });
   const [isResizing, setIsResizing] = useState(false);
   const startPosRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const currentTimeRef = useRef(currentTime);
+  const animationFrameRef = useRef<number>();
 
   // Handle resize dragging
   useEffect(() => {
@@ -42,6 +44,12 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
     };
   }, [isResizing]);
 
+  // Update current time ref
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
+  // Main render loop with RAF for smooth 60fps
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || routes.length === 0) return;
@@ -55,9 +63,12 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
     const plotWidth = width - 2 * padding;
     const plotHeight = height - 2 * padding;
 
-    // Clear canvas
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(0, 0, width, height);
+    const render = () => {
+      const time = currentTimeRef.current;
+
+      // Clear canvas
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, width, height);
 
     // Calculate elevation profiles for each route using real data
     const profiles: Array<{ 
@@ -171,11 +182,11 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
       ctx.beginPath();
       let started = false;
       
-      for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        
-        // Only draw up to current time
-        if (point.time > currentTime) break;
+        for (let i = 0; i < points.length; i++) {
+          const point = points[i];
+          
+          // Only draw up to current time
+          if (point.time > time) break;
         
         const x = scaleX(point.time);
         const y = scaleY(point.elevation);
@@ -192,16 +203,16 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
       ctx.globalAlpha = 1.0;
     });
 
-    // Draw current time indicator
-    const currentX = scaleX(currentTime);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(currentX, padding);
-    ctx.lineTo(currentX, height - padding);
-    ctx.stroke();
-    ctx.setLineDash([]);
+      // Draw current time indicator
+      const currentX = scaleX(time);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(currentX, padding);
+      ctx.lineTo(currentX, height - padding);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
     // Draw axis labels
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
@@ -227,14 +238,24 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
       ctx.fillText(Math.round(elev * 3.28084) + 'ft', padding - 8, y); // Convert meters to feet
     }
 
-    // Title
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.font = 'bold 12px system-ui, -apple-system';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Elevation Profile', width / 2, 8);
+      // Title
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = 'bold 12px system-ui, -apple-system';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('Elevation Profile', width / 2, 8);
 
-  }, [routes, currentTime, maxDuration, size, elevationData]);
+      animationFrameRef.current = requestAnimationFrame(render);
+    };
+
+    render(); // Start the loop
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [routes, maxDuration, size, elevationData]);
 
   if (routes.length === 0) {
     return null;
