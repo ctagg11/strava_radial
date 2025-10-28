@@ -23,11 +23,12 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
   const frontDotsRef = useRef<THREE.Mesh[]>([]);
   
   // Pan and zoom state
-  const [zoom, setZoom] = useState(2); // Start zoomed in tight
+  const [zoom, setZoom] = useState(8); // Start very zoomed in
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const userInteractedRef = useRef(false); // Track if user manually zoomed/panned
+  const targetZoomRef = useRef(8); // Smooth zoom target
   
   // Tooltip state
   const [tooltip, setTooltip] = useState<{ 
@@ -547,13 +548,15 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
       if (!userInteractedRef.current && time > 0) {
         let maxVisibleDistance = 0;
         routeLinesRef.current.forEach(line => {
-          const { duration, totalSegments } = line.userData;
+          const { duration } = line.userData;
           const progress = Math.min(Math.max(time / duration, 0), 1);
-          const visibleSegments = Math.ceil(totalSegments * progress);
           
-          // Check furthest visible point
+          // Check furthest visible point based on actual progress
           const positions = (line.geometry as THREE.BufferGeometry).attributes.position.array;
-          for (let i = 0; i < visibleSegments * 2; i++) {
+          const totalPoints = positions.length / 3;
+          const visiblePointIndex = Math.floor(totalPoints * progress);
+          
+          for (let i = 0; i < visiblePointIndex; i++) {
             const x = positions[i * 3];
             const y = positions[i * 3 + 1];
             const dist = Math.sqrt(x * x + y * y);
@@ -561,11 +564,12 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
           }
         });
         
-        // Target zoom: fit furthest point with margin (0.8 = 80% of view)
-        const targetZoom = maxVisibleDistance > 0 ? (0.8 / maxVisibleDistance) : 2;
-        // Smoothly interpolate to target zoom
-        const smoothZoom = zoom + (targetZoom - zoom) * 0.02;
-        setZoom(Math.max(0.3, Math.min(3, smoothZoom)));
+        // Target zoom: fit furthest point with margin (0.85 = 85% of view)
+        targetZoomRef.current = maxVisibleDistance > 0.001 ? (0.85 / maxVisibleDistance) : 8;
+        // Very smooth interpolation for auto-zoom
+        const currentZoom = zoom;
+        const smoothZoom = currentZoom + (targetZoomRef.current - currentZoom) * 0.05;
+        setZoom(Math.max(0.3, Math.min(10, smoothZoom)));
       }
 
       // Apply zoom and pan to camera
@@ -589,19 +593,34 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
         const geometry = line.geometry as THREE.BufferGeometry;
         geometry.setDrawRange(0, visibleSegments * 2); // *2 because LineSegments uses pairs
         
-        // Update front dot position
+        // Update front dot position with smooth interpolation
         const dot = frontDotsRef.current[idx];
         if (dot && dot.userData.routeId === routeId) {
           if (progress > 0 && progress < 1) {
             dot.visible = true;
-            // Get the position of the last visible vertex
             const positions = geometry.attributes.position.array;
-            const lastIdx = Math.min(visibleSegments * 2 - 1, positions.length / 3 - 1);
-            if (lastIdx >= 0) {
-              dot.position.x = positions[lastIdx * 3];
-              dot.position.y = positions[lastIdx * 3 + 1];
-              dot.position.z = positions[lastIdx * 3 + 2];
-            }
+            const totalPoints = positions.length / 3;
+            
+            // Calculate exact position with smooth interpolation
+            const exactPosition = (totalPoints - 1) * progress;
+            const pointIndex = Math.floor(exactPosition);
+            const fraction = exactPosition - pointIndex;
+            
+            // Get current and next point
+            const idx1 = Math.min(pointIndex, totalPoints - 1);
+            const idx2 = Math.min(pointIndex + 1, totalPoints - 1);
+            
+            // Interpolate between points for smooth animation
+            const x1 = positions[idx1 * 3];
+            const y1 = positions[idx1 * 3 + 1];
+            const z1 = positions[idx1 * 3 + 2];
+            const x2 = positions[idx2 * 3];
+            const y2 = positions[idx2 * 3 + 1];
+            const z2 = positions[idx2 * 3 + 2];
+            
+            dot.position.x = x1 + (x2 - x1) * fraction;
+            dot.position.y = y1 + (y2 - y1) * fraction;
+            dot.position.z = z1 + (z2 - z1) * fraction;
           } else {
             dot.visible = false;
           }

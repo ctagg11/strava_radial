@@ -215,7 +215,6 @@ export default function ElevationProfile({ routes, currentTime, maxDuration, ele
     ctx.translate(15, height / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
-    ctx.fillText('Elevation (ft)', 0, 0);
     ctx.restore();
 
     // Draw elevation tick marks
