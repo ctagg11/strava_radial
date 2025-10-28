@@ -275,18 +275,18 @@ export function clusterActivities(
 }
 
 /**
- * Get color for cluster (using a nice color palette)
+ * Get color for cluster (using highly distinct colors)
  */
 export function getClusterColor(clusterIndex: number, _totalClusters?: number): string {
   const colors = [
-    '#FF6B6B', // Red
-    '#4ECDC4', // Teal
-    '#45B7D1', // Blue
-    '#FFA07A', // Orange
-    '#98D8C8', // Mint
-    '#F7DC6F', // Yellow
-    '#BB8FCE', // Purple
-    '#85C1E2', // Sky blue
+    '#FF3B3B', // Bright Red
+    '#00D9FF', // Cyan
+    '#FFD93B', // Bright Yellow
+    '#9D4EDD', // Purple
+    '#06FFA5', // Bright Mint Green
+    '#FF6B35', // Orange-Red
+    '#4361EE', // Royal Blue
+    '#FF1E8C', // Hot Pink
   ];
   
   return colors[clusterIndex % colors.length];

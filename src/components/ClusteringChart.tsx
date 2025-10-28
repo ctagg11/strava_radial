@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { getClusterColor } from '../utils/clustering';
 
 interface ClusteringChartProps {
@@ -19,6 +19,32 @@ export default function ClusteringChart({
   selectedK,
 }: ClusteringChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 400, height: 300 });
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Handle resize dragging
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(300, e.clientX - 20); // Min width 300
+      const newHeight = Math.max(250, window.innerHeight - e.clientY - 20); // Min height 250
+      setSize({ width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -27,8 +53,8 @@ export default function ClusteringChart({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = size.width;
+    const height = size.height - 80; // Reserve space for silhouette chart
     const padding = 40;
     const plotWidth = width - 2 * padding;
     const plotHeight = height - 2 * padding;
@@ -128,7 +154,7 @@ export default function ClusteringChart({
 
     // Draw centroids
     if (centroids.length > 0) {
-      centroids.forEach((centroid, idx) => {
+      centroids.forEach((centroid) => {
         const x = scaleX(centroid[xFeatureIdx]);
         const y = scaleY(centroid[yFeatureIdx]);
         
@@ -176,28 +202,34 @@ export default function ClusteringChart({
       ctx.fillText(`k=${selectedK}, score=${bestScore.score.toFixed(3)}`, width - padding - 5, padding + 5);
     }
 
-  }, [data, labels, centroids, features, silhouetteScores, selectedK]);
+  }, [data, labels, centroids, features, silhouetteScores, selectedK, size]);
 
   if (data.length === 0 || features.length < 2) {
     return null;
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      background: 'rgba(26, 26, 46, 0.95)',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      borderRadius: '8px',
-      padding: '12px',
-      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-      zIndex: 1000,
-    }}>
+    <div
+      ref={containerRef}
+      style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        width: `${size.width}px`,
+        height: `${size.height}px`,
+        background: 'rgba(26, 26, 46, 0.95)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '8px',
+        padding: '12px',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+        zIndex: 1000,
+        cursor: isResizing ? 'nwse-resize' : 'default',
+      }}
+    >
       <canvas
         ref={canvasRef}
-        width={400}
-        height={300}
+        width={size.width}
+        height={size.height - 80}
         style={{
           display: 'block',
           borderRadius: '4px',
@@ -259,6 +291,24 @@ export default function ClusteringChart({
           Number of clusters (k)
         </div>
       </div>
+      
+      {/* Resize handle */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsResizing(true);
+        }}
+        style={{
+          position: 'absolute',
+          bottom: '0',
+          right: '0',
+          width: '20px',
+          height: '20px',
+          cursor: 'nwse-resize',
+          background: 'linear-gradient(135deg, transparent 0%, transparent 50%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.2) 100%)',
+          borderBottomRightRadius: '8px',
+        }}
+      />
     </div>
   );
 }

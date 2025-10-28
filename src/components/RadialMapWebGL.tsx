@@ -8,9 +8,11 @@ interface RadialMapProps {
   animationSpeed: number;
   scrubTimeSec?: number | null;
   onAnimationComplete?: () => void;
+  clusterFeatures?: string[];
+  clusterEnabled?: boolean;
 }
 
-export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, scrubTimeSec, onAnimationComplete }: RadialMapProps) {
+export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, scrubTimeSec, onAnimationComplete, clusterFeatures, clusterEnabled }: RadialMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -28,7 +30,14 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
   const userInteractedRef = useRef(false); // Track if user manually zoomed/panned
   
   // Tooltip state
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string; type: string; distance: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{ 
+    x: number; 
+    y: number; 
+    name: string; 
+    type: string; 
+    distance: string;
+    clusterData?: { [key: string]: string };
+  } | null>(null);
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   
@@ -208,14 +217,15 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
             // Sort by distance and get the closest
             intersects.sort((a, b) => a.distance - b.distance);
             const closestLine = intersects[0].object;
-            const { activityName, activityType, distance } = closestLine.userData;
+            const { activityName, activityType, distance, clusterData } = closestLine.userData;
             
             setTooltip({
               x: e.clientX,
               y: e.clientY,
               name: activityName,
               type: activityType,
-              distance: distance + ' mi'
+              distance: distance + ' mi',
+              clusterData: clusterData
             });
           } else {
             setTooltip(null);
@@ -354,13 +364,47 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
       
       // Find the original route data for tooltip info
       const originalRoute = routes.find(r => r.activity.id === route.id);
+      
+      // Build cluster data if enabled
+      let clusterData: { [key: string]: string } | undefined;
+      if (clusterEnabled && clusterFeatures && originalRoute) {
+        clusterData = {};
+        clusterFeatures.forEach(feature => {
+          const activity = originalRoute.activity;
+          let value = '';
+          switch (feature) {
+            case 'distance_km':
+              value = (activity.distance / 1000).toFixed(1) + ' km';
+              break;
+            case 'average_speed_kph':
+              value = activity.average_speed 
+                ? (activity.average_speed * 3.6).toFixed(1) + ' km/h'
+                : ((activity.distance / activity.moving_time) * 3.6).toFixed(1) + ' km/h';
+              break;
+            case 'total_elevation_gain':
+              value = activity.total_elevation_gain.toFixed(0) + ' m';
+              break;
+            case 'moving_time_hours':
+              value = (activity.moving_time / 3600).toFixed(2) + ' hrs';
+              break;
+            case 'max_speed_kph':
+              value = activity.max_speed 
+                ? (activity.max_speed * 3.6).toFixed(1) + ' km/h'
+                : 'N/A';
+              break;
+          }
+          clusterData![feature.replace(/_/g, ' ')] = value;
+        });
+      }
+      
       line.userData = { 
         routeId: route.id, 
         duration: route.duration,
         totalSegments: route.points.length - 1,
         activityName: originalRoute?.activity.name || 'Unknown',
         activityType: originalRoute?.activity.type || 'Activity',
-        distance: originalRoute ? (originalRoute.activity.distance / 1609.34).toFixed(1) : '0' // Convert to miles
+        distance: originalRoute ? (originalRoute.activity.distance / 1609.34).toFixed(1) : '0', // Convert to miles
+        clusterData: clusterData
       };
       scene.add(line);
       routeLinesRef.current.push(line);
@@ -378,7 +422,7 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
       scene.add(dot);
       frontDotsRef.current.push(dot);
     });
-  }, [worldRoutes, sceneScale, routes]);
+  }, [worldRoutes, sceneScale, routes, clusterEnabled, clusterFeatures]);
 
   // Track animation timing locally for smooth playback
   const animationStartTimeRef = useRef<number | null>(null);
@@ -600,25 +644,44 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
             position: 'fixed',
             left: tooltip.x + 15,
             top: tooltip.y + 15,
-            background: 'rgba(0, 0, 0, 0.9)',
+            background: 'rgba(0, 0, 0, 0.95)',
             color: '#fff',
-            padding: '8px 12px',
+            padding: '10px 14px',
             borderRadius: '6px',
             fontSize: '13px',
             pointerEvents: 'none',
             zIndex: 1000,
             border: '1px solid rgba(255, 255, 255, 0.2)',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-            maxWidth: '250px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
+            maxWidth: '300px',
           }}
         >
-          <div style={{ fontWeight: '600', marginBottom: '4px' }}>{tooltip.name}</div>
-          <div style={{ fontSize: '11px', color: '#aaa' }}>
+          <div style={{ fontWeight: '600', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {tooltip.name}
+          </div>
+          <div style={{ fontSize: '11px', color: '#aaa', marginBottom: tooltip.clusterData ? '8px' : 0 }}>
             {tooltip.type} • {tooltip.distance}
           </div>
+          {tooltip.clusterData && (
+            <div style={{ 
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)', 
+              paddingTop: '6px',
+              fontSize: '11px'
+            }}>
+              {Object.entries(tooltip.clusterData).map(([key, value]) => (
+                <div key={key} style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  gap: '12px',
+                  marginBottom: '3px',
+                  color: '#ddd'
+                }}>
+                  <span style={{ color: '#999', textTransform: 'capitalize' }}>{key}:</span>
+                  <span style={{ fontWeight: '500' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -340,6 +340,8 @@ function App() {
         animationSpeed={animationSpeed}
         scrubTimeSec={scrubTimeSec}
         onAnimationComplete={handleAnimationComplete}
+        clusterFeatures={selectedFeatures}
+        clusterEnabled={clusteringEnabled}
       />
       {clusteringEnabled && clusterResult && clusterResult.rawData && clusterResult.silhouetteScores && (
         <ClusteringChart
