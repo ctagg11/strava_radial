@@ -23,7 +23,7 @@ function App() {
   
   // Clustering state
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(['distance_km', 'average_speed_kph']);
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(['distance_miles', 'average_speed_mph']);
   const [clusterLabels, setClusterLabels] = useState<number[]>([]);
   const [clusterCount, setClusterCount] = useState<number>(0);
   const [clusterColors, setClusterColors] = useState<string[]>([]);

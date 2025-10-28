@@ -175,11 +175,11 @@ export default function Controls({
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               {[
-                { value: 'distance_km', label: 'Distance (km)' },
-                { value: 'average_speed_kph', label: 'Average Speed (km/h)' },
-                { value: 'total_elevation_gain', label: 'Elevation Gain (m)' },
+                { value: 'distance_miles', label: 'Distance (mi)' },
+                { value: 'average_speed_mph', label: 'Average Speed (mph)' },
+                { value: 'total_elevation_gain', label: 'Elevation Gain (ft)' },
                 { value: 'moving_time_hours', label: 'Moving Time (hrs)' },
-                { value: 'max_speed_kph', label: 'Max Speed (km/h)' },
+                { value: 'max_speed_mph', label: 'Max Speed (mph)' },
               ].map(({ value, label }) => (
                 <label key={value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
                   <input

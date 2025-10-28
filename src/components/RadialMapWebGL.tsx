@@ -374,23 +374,23 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
           const activity = originalRoute.activity;
           let value = '';
           switch (feature) {
-            case 'distance_km':
-              value = (activity.distance / 1000).toFixed(1) + ' km';
+            case 'distance_miles':
+              value = (activity.distance / 1609.34).toFixed(1) + ' mi';
               break;
-            case 'average_speed_kph':
+            case 'average_speed_mph':
               value = activity.average_speed 
-                ? (activity.average_speed * 3.6).toFixed(1) + ' km/h'
-                : ((activity.distance / activity.moving_time) * 3.6).toFixed(1) + ' km/h';
+                ? (activity.average_speed * 2.23694).toFixed(1) + ' mph'
+                : ((activity.distance / activity.moving_time) * 2.23694).toFixed(1) + ' mph';
               break;
             case 'total_elevation_gain':
-              value = activity.total_elevation_gain.toFixed(0) + ' m';
+              value = (activity.total_elevation_gain * 3.28084).toFixed(0) + ' ft';
               break;
             case 'moving_time_hours':
               value = (activity.moving_time / 3600).toFixed(2) + ' hrs';
               break;
-            case 'max_speed_kph':
+            case 'max_speed_mph':
               value = activity.max_speed 
-                ? (activity.max_speed * 3.6).toFixed(1) + ' km/h'
+                ? (activity.max_speed * 2.23694).toFixed(1) + ' mph'
                 : 'N/A';
               break;
           }

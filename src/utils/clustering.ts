@@ -253,23 +253,20 @@ export function clusterActivities(
     
     featureNames.forEach(feature => {
       switch (feature) {
-        case 'distance_km':
-          features.push(activity.distance / 1000);
-          break;
         case 'distance_miles':
           features.push(activity.distance / 1609.34);
           break;
-        case 'average_speed_kph':
-          features.push(activity.average_speed ? activity.average_speed * 3.6 : activity.distance / activity.moving_time * 3.6);
+        case 'average_speed_mph':
+          features.push(activity.average_speed ? activity.average_speed * 2.23694 : (activity.distance / activity.moving_time) * 2.23694);
           break;
         case 'total_elevation_gain':
-          features.push(activity.total_elevation_gain);
+          features.push(activity.total_elevation_gain * 3.28084); // Convert meters to feet
           break;
         case 'moving_time_hours':
           features.push(activity.moving_time / 3600);
           break;
-        case 'max_speed_kph':
-          features.push(activity.max_speed ? activity.max_speed * 3.6 : 0);
+        case 'max_speed_mph':
+          features.push(activity.max_speed ? activity.max_speed * 2.23694 : 0);
           break;
       }
     });
