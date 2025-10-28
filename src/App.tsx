@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import RadialMapWebGL from './components/RadialMapWebGL';
 import Controls from './components/Controls';
+import ClusteringChart from './components/ClusteringChart';
 import { StravaService } from './stravaService';
 import { StravaActivity, RouteData } from './types';
 // import ElevationChart from './components/ElevationChart';
 import { decodePolyline } from './utils/polyline';
+import { clusterActivities, getClusterColor, ClusterResult } from './utils/clustering';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -17,6 +19,14 @@ function App() {
   const [scrubTimeSec, setScrubTimeSec] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
   const radialMapTimeRef = useRef<{ updateTime: (time: number) => void } | null>(null);
+  
+  // Clustering state
+  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(['distance_km', 'average_speed_kph']);
+  const [clusterLabels, setClusterLabels] = useState<number[]>([]);
+  const [clusterCount, setClusterCount] = useState<number>(0);
+  const [clusterColors, setClusterColors] = useState<string[]>([]);
+  const [clusterResult, setClusterResult] = useState<ClusterResult | null>(null);
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -91,15 +101,37 @@ function App() {
     }
   };
 
-  const processActivitiesToRoutes = (activities: StravaActivity[]): RouteData[] => {
+  const processActivitiesToRoutes = (activities: StravaActivity[], clusterLabels?: number[]): RouteData[] => {
     console.log('Sample activity structure:', activities[0]);
     
-    // Filter activities that have polyline data
+    // Filter activities: only cycling, with polyline data, and not virtual
     const filtered = activities.filter(activity => {
       const hasPolyline = activity.map?.summary_polyline || activity.map?.polyline;
       
       if (!hasPolyline) {
         console.log('Activity missing polyline:', activity.name);
+        return false;
+      }
+      
+      // Only include cycling activities
+      const isCycling = activity.type && (
+        activity.type.toLowerCase().includes('ride') || 
+        activity.type.toLowerCase().includes('bike') ||
+        activity.type.toLowerCase() === 'virtualride' ||
+        activity.type.toLowerCase() === 'ebikeride'
+      );
+      
+      if (!isCycling) {
+        console.log('Skipping non-cycling activity:', activity.name, activity.type);
+        return false;
+      }
+      
+      // Exclude virtual rides (VirtualRide, indoor trainer, etc.)
+      const isVirtual = activity.trainer === true || 
+                       activity.type?.toLowerCase() === 'virtualride';
+      
+      if (isVirtual) {
+        console.log('Skipping virtual activity:', activity.name);
         return false;
       }
       
@@ -116,7 +148,8 @@ function App() {
     // Process activities and extract coordinates from polylines
     const routes: RouteData[] = [];
     
-    for (const activity of filtered) {
+    for (let i = 0; i < filtered.length; i++) {
+      const activity = filtered[i];
       const polyline = activity.map?.summary_polyline || activity.map?.polyline || '';
       const points = decodePolyline(polyline);
       
@@ -131,11 +164,18 @@ function App() {
       
       console.log(`Activity: ${activity.name}, Points: ${points.length}, Start: [${startPoint.lat}, ${startPoint.lng}]`);
       
-      // Determine color based on activity type
-      const color = activity.type.toLowerCase().includes('ride') || 
-                   activity.type.toLowerCase().includes('bike') 
-        ? '#4285f4' // Blue for cycling
-        : '#ea4335'; // Red for running
+      // Determine color based on clustering or activity type
+      let color: string;
+      if (clusterLabels && clusterLabels[i] !== undefined) {
+        // Use cluster color
+        color = getClusterColor(clusterLabels[i], clusterCount);
+      } else {
+        // Default: color by activity type
+        color = activity.type.toLowerCase().includes('ride') || 
+                activity.type.toLowerCase().includes('bike') 
+          ? '#4285f4' // Blue for cycling
+          : '#ea4335'; // Red for running
+      }
 
       routes.push({
         activity: {
@@ -151,6 +191,67 @@ function App() {
     console.log(`Successfully processed ${routes.length} routes`);
     return routes;
   };
+
+  const handleApplyClustering = useCallback(() => {
+    if (selectedFeatures.length < 2 || activities.length === 0) {
+      alert('Please select at least 2 features and load activities first.');
+      return;
+    }
+
+    try {
+      // Filter to only cycling activities (same as processActivitiesToRoutes)
+      const filtered = activities.filter(activity => {
+        const hasPolyline = activity.map?.summary_polyline || activity.map?.polyline;
+        const isCycling = activity.type && (
+          activity.type.toLowerCase().includes('ride') || 
+          activity.type.toLowerCase().includes('bike') ||
+          activity.type.toLowerCase() === 'virtualride' ||
+          activity.type.toLowerCase() === 'ebikeride'
+        );
+        const isVirtual = activity.trainer === true || activity.type?.toLowerCase() === 'virtualride';
+        return hasPolyline && isCycling && !isVirtual;
+      });
+
+      console.log(`Clustering ${filtered.length} activities on features:`, selectedFeatures);
+      
+      // Run clustering
+      const result = clusterActivities(filtered, selectedFeatures);
+      
+      console.log(`Clustering complete: ${result.k} clusters, silhouette score: ${result.silhouetteScore.toFixed(3)}`);
+      console.log('All silhouette scores:', result.silhouetteScores);
+      
+      // Update state
+      setClusterLabels(result.labels);
+      setClusterCount(result.k);
+      setClusterResult(result);
+      
+      // Generate colors for clusters
+      const colors = Array.from({ length: result.k }, (_, i) => getClusterColor(i, result.k));
+      setClusterColors(colors);
+      
+      // Reprocess routes with cluster colors
+      const newRoutes = processActivitiesToRoutes(activities, result.labels);
+      setRoutes(newRoutes);
+      
+      alert(`Successfully clustered into ${result.k} groups (quality: ${result.silhouetteScore.toFixed(2)})`);
+    } catch (error) {
+      console.error('Clustering error:', error);
+      alert('Failed to apply clustering. Please try different features.');
+    }
+  }, [selectedFeatures, activities, clusterCount]);
+
+  const handleClusteringToggle = useCallback((enabled: boolean) => {
+    setClusteringEnabled(enabled);
+    if (!enabled) {
+      // Reset to default colors
+      const newRoutes = processActivitiesToRoutes(activities);
+      setRoutes(newRoutes);
+      setClusterLabels([]);
+      setClusterCount(0);
+      setClusterColors([]);
+      setClusterResult(null);
+    }
+  }, [activities]);
 
   // Continuous timeline: unify play and scrub into a single time state that advances at animationSpeed
   // Optimized: only update React state every 50ms (20fps) to reduce renders
@@ -225,6 +326,13 @@ function App() {
         activityCount={activities.length}
         maxDurationSec={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
         scrubTimeSec={scrubTimeSec}
+        clusteringEnabled={clusteringEnabled}
+        onClusteringToggle={handleClusteringToggle}
+        selectedFeatures={selectedFeatures}
+        onFeaturesChange={setSelectedFeatures}
+        onApplyClustering={handleApplyClustering}
+        clusterCount={clusterCount}
+        clusterColors={clusterColors}
       />
       <RadialMapWebGL
         routes={routes}
@@ -233,6 +341,16 @@ function App() {
         scrubTimeSec={scrubTimeSec}
         onAnimationComplete={handleAnimationComplete}
       />
+      {clusteringEnabled && clusterResult && clusterResult.rawData && clusterResult.silhouetteScores && (
+        <ClusteringChart
+          features={selectedFeatures}
+          data={clusterResult.rawData}
+          labels={clusterResult.labels}
+          centroids={clusterResult.centroids}
+          silhouetteScores={clusterResult.silhouetteScores}
+          selectedK={clusterResult.k}
+        />
+      )}
     </div>
   );
 }

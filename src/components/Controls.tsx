@@ -17,6 +17,13 @@ interface ControlsProps {
   activityCount: number;
   maxDurationSec?: number;
   scrubTimeSec?: number | null;
+  clusteringEnabled: boolean;
+  onClusteringToggle: (enabled: boolean) => void;
+  selectedFeatures: string[];
+  onFeaturesChange: (features: string[]) => void;
+  onApplyClustering: () => void;
+  clusterCount?: number;
+  clusterColors?: string[];
 }
 
 export default function Controls({
@@ -36,6 +43,13 @@ export default function Controls({
   activityCount,
   maxDurationSec,
   scrubTimeSec,
+  clusteringEnabled,
+  onClusteringToggle,
+  selectedFeatures,
+  onFeaturesChange,
+  onApplyClustering,
+  clusterCount,
+  clusterColors,
 }: ControlsProps) {
   const timelineSliderRef = useRef<HTMLInputElement>(null);
 
@@ -102,7 +116,7 @@ export default function Controls({
             <input
               type="range"
               min="1"
-              max="50"
+              max="1000"
               value={animationSpeed}
               onChange={(e) => onSpeedChange(Number(e.target.value))}
               className="speed-slider"
@@ -129,17 +143,83 @@ export default function Controls({
       )}
 
       <div className="controls-section">
-        <div className="section-label">Activity Types</div>
-        <div className="legend">
-          <div className="legend-item">
-            <span className="legend-color" style={{ backgroundColor: '#4285f4' }}></span>
-            <span>Cycling</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-color" style={{ backgroundColor: '#ea4335' }}></span>
-            <span>Running</span>
-          </div>
+        <div className="section-label">Coloring</div>
+        <div className="clustering-toggle">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={clusteringEnabled}
+              onChange={(e) => onClusteringToggle(e.target.checked)}
+            />
+            <span>Enable Clustering</span>
+          </label>
         </div>
+        
+        {!clusteringEnabled && (
+          <div className="legend">
+            <div className="legend-item">
+              <span className="legend-color" style={{ backgroundColor: '#4285f4' }}></span>
+              <span>Cycling</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-color" style={{ backgroundColor: '#ea4335' }}></span>
+              <span>Running</span>
+            </div>
+          </div>
+        )}
+
+        {clusteringEnabled && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
+              Select Features
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {[
+                { value: 'distance_km', label: 'Distance (km)' },
+                { value: 'average_speed_kph', label: 'Average Speed (km/h)' },
+                { value: 'total_elevation_gain', label: 'Elevation Gain (m)' },
+                { value: 'moving_time_hours', label: 'Moving Time (hrs)' },
+                { value: 'max_speed_kph', label: 'Max Speed (km/h)' },
+              ].map(({ value, label }) => (
+                <label key={value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedFeatures.includes(value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onFeaturesChange([...selectedFeatures, value]);
+                      } else {
+                        onFeaturesChange(selectedFeatures.filter(f => f !== value));
+                      }
+                    }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              onClick={onApplyClustering}
+              disabled={selectedFeatures.length < 2}
+              className="btn btn-primary"
+              style={{ marginTop: '0.75rem', width: '100%' }}
+            >
+              Apply Clustering
+            </button>
+            {clusterCount && clusterColors && (
+              <div className="legend" style={{ marginTop: '0.75rem' }}>
+                <div style={{ marginBottom: '0.35rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                  {clusterCount} Clusters Found
+                </div>
+                {clusterColors.map((color, i) => (
+                  <div key={i} className="legend-item">
+                    <span className="legend-color" style={{ backgroundColor: color }}></span>
+                    <span>Cluster {i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

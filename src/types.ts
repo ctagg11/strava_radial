@@ -12,6 +12,9 @@ export interface StravaActivity {
   distance: number;
   moving_time: number;
   total_elevation_gain: number;
+  average_speed?: number;
+  max_speed?: number;
+  trainer?: boolean;
 }
 
 export interface ActivityPoint {

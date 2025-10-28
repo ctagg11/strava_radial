@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { RouteData } from '../types';
 
@@ -17,6 +17,8 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const routeLinesRef = useRef<THREE.LineSegments[]>([]);
   const currentTimeRef = useRef(scrubTimeSec ?? 0);
+  const labelCanvasRef = useRef<HTMLCanvasElement>(null);
+  const frontDotsRef = useRef<THREE.Mesh[]>([]);
   
   // Pan and zoom state
   const [zoom, setZoom] = useState(2); // Start zoomed in tight
@@ -24,6 +26,18 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const userInteractedRef = useRef(false); // Track if user manually zoomed/panned
+  
+  // Tooltip state
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; name: string; type: string; distance: string } | null>(null);
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
+  
+  // Initialize raycaster line threshold
+  useEffect(() => {
+    if (raycasterRef.current.params.Line) {
+      raycasterRef.current.params.Line.threshold = 0.01;
+    }
+  }, []);
 
   // Precompute world-space coordinates (in meters) once
   const worldRoutes = useMemo(() => {
@@ -155,18 +169,59 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
     };
 
+    let lastRaycastTime = 0;
+    
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      userInteractedRef.current = true; // User took control
-      const dx = e.clientX - lastMouseRef.current.x;
-      const dy = e.clientY - lastMouseRef.current.y;
+      const rect = container.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      mouseRef.current.set(x, y);
       
-      setPan(prev => ({
-        x: prev.x + dx * 0.002 / zoom,
-        y: prev.y - dy * 0.002 / zoom
-      }));
-      
-      lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      if (isDraggingRef.current) {
+        userInteractedRef.current = true; // User took control
+        const dx = e.clientX - lastMouseRef.current.x;
+        const dy = e.clientY - lastMouseRef.current.y;
+        
+        setPan(prev => ({
+          x: prev.x + dx * 0.002 / zoom,
+          y: prev.y - dy * 0.002 / zoom
+        }));
+        
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+        setTooltip(null); // Hide tooltip while dragging
+      } else {
+        // Throttle raycasting to every 50ms for performance
+        const now = Date.now();
+        if (now - lastRaycastTime < 50) return;
+        lastRaycastTime = now;
+        
+        // Raycast to detect hover with zoom-adjusted threshold
+        if (cameraRef.current && sceneRef.current && routeLinesRef.current.length > 0) {
+          // Adjust threshold based on zoom level
+          raycasterRef.current.params.Line = { threshold: 0.02 / zoom };
+          raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+          
+          // Get all intersections and find the closest one
+          const intersects = raycasterRef.current.intersectObjects(routeLinesRef.current, false);
+          
+          if (intersects.length > 0) {
+            // Sort by distance and get the closest
+            intersects.sort((a, b) => a.distance - b.distance);
+            const closestLine = intersects[0].object;
+            const { activityName, activityType, distance } = closestLine.userData;
+            
+            setTooltip({
+              x: e.clientX,
+              y: e.clientY,
+              name: activityName,
+              type: activityType,
+              distance: distance + ' mi'
+            });
+          } else {
+            setTooltip(null);
+          }
+        }
+      }
     };
 
     const handleMouseUp = () => {
@@ -259,50 +314,164 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
     // Clear old routes
     routeLinesRef.current.forEach(line => scene.remove(line));
     routeLinesRef.current = [];
+    frontDotsRef.current.forEach(dot => scene.remove(dot));
+    frontDotsRef.current = [];
 
     // Create line segments for each route
     worldRoutes.forEach(route => {
       const positions: number[] = [];
+      const colors: number[] = [];
+      const baseColor = new THREE.Color(route.color);
+      
       for (let i = 0; i < route.points.length - 1; i++) {
         const p1 = route.points[i];
         const p2 = route.points[i + 1];
         positions.push(p1.x * sceneScale * 0.9, p1.y * sceneScale * 0.9, 0);
         positions.push(p2.x * sceneScale * 0.9, p2.y * sceneScale * 0.9, 0);
+        
+        // Gradient from lighter (0.2) to darker (1.0) - more noticeable
+        const t = i / Math.max(1, route.points.length - 2);
+        const intensity = 0.2 + t * 0.8;
+        
+        // Both vertices of the segment get the same color
+        colors.push(
+          baseColor.r * intensity, baseColor.g * intensity, baseColor.b * intensity,
+          baseColor.r * intensity, baseColor.g * intensity, baseColor.b * intensity
+        );
       }
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
-      // Create alpha array for gradient (light to dark)
-      const alphas: number[] = [];
-      for (let i = 0; i < route.points.length - 1; i++) {
-        const alpha = 0.25 + (i / Math.max(1, route.points.length - 2)) * 0.75;
-        alphas.push(alpha, alpha);
-      }
-      geometry.setAttribute('alpha', new THREE.Float32BufferAttribute(alphas, 1));
-
-      const color = new THREE.Color(route.color);
       const material = new THREE.LineBasicMaterial({ 
-        color,
+        vertexColors: true,
         transparent: true,
         opacity: 0.9
       });
 
       const line = new THREE.LineSegments(geometry, material);
+      
+      // Find the original route data for tooltip info
+      const originalRoute = routes.find(r => r.activity.id === route.id);
       line.userData = { 
         routeId: route.id, 
         duration: route.duration,
-        totalSegments: route.points.length - 1
+        totalSegments: route.points.length - 1,
+        activityName: originalRoute?.activity.name || 'Unknown',
+        activityType: originalRoute?.activity.type || 'Activity',
+        distance: originalRoute ? (originalRoute.activity.distance / 1609.34).toFixed(1) : '0' // Convert to miles
       };
       scene.add(line);
       routeLinesRef.current.push(line);
+      
+      // Create a white dot for the front of this route
+      const dotGeometry = new THREE.CircleGeometry(0.002, 8);
+      const dotMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9
+      });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      dot.userData = { routeId: route.id };
+      dot.visible = false; // Hidden until animation starts
+      scene.add(dot);
+      frontDotsRef.current.push(dot);
     });
-  }, [worldRoutes, sceneScale]);
+  }, [worldRoutes, sceneScale, routes]);
 
-  // Update currentTimeRef when scrubTimeSec changes
+  // Track animation timing locally for smooth playback
+  const animationStartTimeRef = useRef<number | null>(null);
+  const animationStartValueRef = useRef<number>(0);
+
+  // Update currentTimeRef when scrubTimeSec changes (from manual scrubbing)
   useEffect(() => {
     currentTimeRef.current = scrubTimeSec ?? 0;
-  }, [scrubTimeSec]);
+    // Reset animation timing when scrubbing
+    if (!isAnimating) {
+      animationStartTimeRef.current = null;
+    }
+  }, [scrubTimeSec, isAnimating]);
+
+  // Draw distance labels on overlay canvas
+  const drawLabels = useCallback(() => {
+    const labelCanvas = labelCanvasRef.current;
+    const container = containerRef.current;
+    const camera = cameraRef.current;
+    if (!labelCanvas || !container || !camera) return;
+
+    const ctx = labelCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = container.getBoundingClientRect();
+    labelCanvas.width = rect.width;
+    labelCanvas.height = rect.height;
+
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const distanceMiles = [5, 10, 20, 50];
+    const metersPerMile = 1609.34;
+
+    ctx.font = '12px system-ui, -apple-system';
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    distanceMiles.forEach(miles => {
+      // Calculate radius in world space then convert to screen space
+      const worldRadius = (miles * metersPerMile) * sceneScale * 0.9;
+      const frustumSize = 1.2 / zoom;
+      const screenRadius = (worldRadius / frustumSize) * (rect.height / 2);
+      
+      const labelX = centerX + screenRadius + 8;
+      const labelY = centerY;
+
+      // Only draw if visible
+      if (screenRadius > 10 && screenRadius < rect.width * 0.9) {
+        ctx.fillText(`${miles}mi`, labelX, labelY);
+      }
+    });
+
+    // Draw compass lines (N, S, E, W)
+    const compassOffset = 30; // Distance from edge
+    ctx.strokeStyle = 'rgba(170, 170, 170, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]); // Dashed line
+
+    // Vertical line (N-S)
+    ctx.beginPath();
+    ctx.moveTo(centerX, compassOffset);
+    ctx.lineTo(centerX, rect.height - compassOffset);
+    ctx.stroke();
+
+    // Horizontal line (E-W)
+    ctx.beginPath();
+    ctx.moveTo(compassOffset, centerY);
+    ctx.lineTo(rect.width - compassOffset, centerY);
+    ctx.stroke();
+
+    ctx.setLineDash([]); // Reset dash
+
+    // Draw compass labels
+    ctx.font = '14px system-ui, -apple-system';
+    ctx.fillStyle = 'rgba(170, 170, 170, 0.6)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // North (top)
+    ctx.fillText('N', centerX, compassOffset - 10);
+    
+    // South (bottom)
+    ctx.fillText('S', centerX, rect.height - compassOffset + 10);
+    
+    // East (right)
+    ctx.fillText('E', rect.width - compassOffset + 10, centerY);
+    
+    // West (left)
+    ctx.fillText('W', compassOffset - 10, centerY);
+  }, [zoom, sceneScale]);
 
   // Animation loop with zoom/pan
   useEffect(() => {
@@ -314,8 +483,21 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
 
     let animationId: number;
 
-    const animate = () => {
-      const time = currentTimeRef.current;
+    const animate = (now: number) => {
+      // If animating, calculate time based on performance.now() for smooth animation
+      let time: number;
+      if (isAnimating) {
+        if (animationStartTimeRef.current === null) {
+          animationStartTimeRef.current = now;
+          animationStartValueRef.current = currentTimeRef.current;
+        }
+        const elapsed = (now - animationStartTimeRef.current) / 1000; // real seconds
+        time = animationStartValueRef.current + elapsed * animationSpeed;
+        currentTimeRef.current = time;
+      } else {
+        time = currentTimeRef.current;
+        animationStartTimeRef.current = null;
+      }
 
       // Calculate required zoom based on furthest visible point (auto-zoom)
       if (!userInteractedRef.current && time > 0) {
@@ -354,33 +536,92 @@ export default function RadialMapWebGL({ routes, isAnimating, animationSpeed, sc
       camera.updateProjectionMatrix();
 
       // Update visibility of route segments based on progress
-      routeLinesRef.current.forEach(line => {
-        const { duration, totalSegments } = line.userData;
+      routeLinesRef.current.forEach((line, idx) => {
+        const { duration, totalSegments, routeId } = line.userData;
         const progress = Math.min(Math.max(time / duration, 0), 1);
         const visibleSegments = Math.ceil(totalSegments * progress);
         
         // Update drawRange to only show visible segments
         const geometry = line.geometry as THREE.BufferGeometry;
         geometry.setDrawRange(0, visibleSegments * 2); // *2 because LineSegments uses pairs
+        
+        // Update front dot position
+        const dot = frontDotsRef.current[idx];
+        if (dot && dot.userData.routeId === routeId) {
+          if (progress > 0 && progress < 1) {
+            dot.visible = true;
+            // Get the position of the last visible vertex
+            const positions = geometry.attributes.position.array;
+            const lastIdx = Math.min(visibleSegments * 2 - 1, positions.length / 3 - 1);
+            if (lastIdx >= 0) {
+              dot.position.x = positions[lastIdx * 3];
+              dot.position.y = positions[lastIdx * 3 + 1];
+              dot.position.z = positions[lastIdx * 3 + 2];
+            }
+          } else {
+            dot.visible = false;
+          }
+        }
       });
 
       renderer.render(scene, camera);
+      drawLabels(); // Update labels every frame
       animationId = requestAnimationFrame(animate);
     };
 
-    animate();
+    animationId = requestAnimationFrame(animate);
 
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [zoom, pan]);
+  }, [zoom, pan, drawLabels, isAnimating, animationSpeed]);
 
   return (
     <div 
       ref={containerRef} 
       className="radial-map-container"
-      style={{ width: '100%', height: '100%' }}
-    />
+      style={{ width: '100%', height: '100%', position: 'relative' }}
+    >
+      <canvas
+        ref={labelCanvasRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 1
+        }}
+      />
+      {tooltip && (
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltip.x + 15,
+            top: tooltip.y + 15,
+            background: 'rgba(0, 0, 0, 0.9)',
+            color: '#fff',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            pointerEvents: 'none',
+            zIndex: 1000,
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            maxWidth: '250px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
+        >
+          <div style={{ fontWeight: '600', marginBottom: '4px' }}>{tooltip.name}</div>
+          <div style={{ fontSize: '11px', color: '#aaa' }}>
+            {tooltip.type} • {tooltip.distance}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

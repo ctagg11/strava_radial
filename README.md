@@ -5,9 +5,15 @@ Visualize all your Strava activities radiating from a single center point. Watch
 ## Features
 
 - **Radial visualization** – All routes start from the same point and branch outward
-- **Timeline animation** – Routes draw progressively at their actual speed (adjustable 1–10x)
+- **Timeline animation** – Routes draw progressively at their actual speed (adjustable 1–1000x)
 - **Timeline scrubbing** – Drag the timeline to jump to any moment
-- **Activity coloring** – Blue for cycling, red for running
+- **K-Means clustering** – Group similar rides by distance, speed, elevation, and more
+- **Clustering visualization** – 2D scatter plot with silhouette scores to understand cluster quality
+- **Activity coloring** – Blue for cycling, red for running, or multi-color for clusters
+- **Interactive hover** – Mouse over any route to see activity details
+- **WebGL rendering** – Smooth 60fps animation with GPU acceleration
+- **Compass overlay** – N/S/E/W reference lines for orientation
+- **Auto-zoom** – Viewport adjusts as longer routes extend outward
 - **Strava OAuth** – Secure authentication with your Strava account
 
 ## Setup
@@ -48,13 +54,23 @@ Visualize all your Strava activities radiating from a single center point. Watch
 
 1. **Login** with your Strava account.
 2. **Load Activities** to fetch your data (cached locally to respect API limits).
-3. **Play** to animate all routes; adjust speed or scrub the timeline to explore.
+3. **Play** to animate all routes; adjust speed (1-1000x) or scrub the timeline to explore.
+4. **Enable Clustering** to group similar rides:
+   - Select 2+ features (distance, speed, elevation, moving time, max speed)
+   - Click "Apply Clustering" to run K-Means algorithm
+   - View clustering visualization in bottom-right corner showing:
+     - 2D scatter plot of first two features
+     - Cluster centroids (red stars)
+     - Silhouette scores for k=2 through k=6 (selected k highlighted)
+5. **Hover** over any route to see activity name, type, and distance.
 
 ## Tech Stack
 
 - React 18 + TypeScript
 - Vite
-- Canvas API (custom radial rendering)
+- Three.js (WebGL rendering for GPU-accelerated graphics)
+- Canvas API (2D overlay for labels and clustering charts)
+- K-Means clustering with silhouette score optimization
 - Strava API v3
 - Axios
 
@@ -64,26 +80,42 @@ Visualize all your Strava activities radiating from a single center point. Watch
 strava-radial-map/
 ├── src/
 │   ├── components/
-│   │   ├── RadialMap.tsx     # Canvas-based radial visualization
-│   │   └── Controls.tsx      # Sidebar UI and timeline
+│   │   ├── RadialMapWebGL.tsx    # WebGL radial visualization (Three.js)
+│   │   ├── ClusteringChart.tsx   # 2D clustering visualization
+│   │   └── Controls.tsx          # Sidebar UI, timeline, and clustering controls
 │   ├── utils/
-│   │   └── polyline.ts       # Polyline decoder for Strava routes
-│   ├── App.tsx               # Main app logic
-│   ├── stravaService.ts      # Strava OAuth and API calls
+│   │   ├── polyline.ts           # Polyline decoder for Strava routes
+│   │   └── clustering.ts         # K-Means algorithm and utilities
+│   ├── App.tsx                   # Main app logic
+│   ├── stravaService.ts          # Strava OAuth and API calls
 │   ├── types.ts
 │   └── index.css
-├── .env                      # Your API keys (not committed)
+├── .env                          # Your API keys (not committed)
 ├── package.json
 └── vite.config.ts
 ```
 
 ## How It Works
 
+### Visualization
 1. Fetch all your Strava activities and their GPS polylines.
 2. Decode polylines to lat/lng coordinates.
 3. Convert to meters relative to each activity's start point.
-4. Render on a canvas with all starts centered.
+4. Render using Three.js WebGL with all starts centered at origin.
 5. Animate based on each activity's `moving_time`; adjust with the speed slider or timeline scrubber.
+
+### Clustering Algorithm
+1. Extract selected features from activities (distance, speed, elevation, etc.).
+2. Standardize features using Z-score normalization for fair comparison.
+3. Run K-Means clustering for k=2 through k=6:
+   - Uses k-means++ initialization for better convergence
+   - Iterates until cluster assignments stabilize
+4. Calculate silhouette score for each k:
+   - Measures cluster cohesion (how close points are within clusters)
+   - Measures cluster separation (how far apart different clusters are)
+   - Score ranges from -1 to 1 (higher is better)
+5. Select k with highest silhouette score as optimal.
+6. Color routes based on cluster assignment.
 
 ## Troubleshooting
 
