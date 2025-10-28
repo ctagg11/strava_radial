@@ -143,7 +143,7 @@ export default function Controls({
       )}
 
       <div className="controls-section">
-        <div className="section-label">Coloring</div>
+        <div className="section-label">Clustering</div>
         <div className="clustering-toggle">
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
             <input
@@ -154,19 +154,6 @@ export default function Controls({
             <span>Enable Clustering</span>
           </label>
         </div>
-        
-        {!clusteringEnabled && (
-          <div className="legend">
-            <div className="legend-item">
-              <span className="legend-color" style={{ backgroundColor: '#4285f4' }}></span>
-              <span>Cycling</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-color" style={{ backgroundColor: '#ea4335' }}></span>
-              <span>Running</span>
-            </div>
-          </div>
-        )}
 
         {clusteringEnabled && (
           <div style={{ marginTop: '0.75rem' }}>
