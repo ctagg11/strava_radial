@@ -187,7 +187,7 @@ export default function ClusteringChart({
       style={{
         position: 'fixed',
         bottom: '20px',
-        left: '20px',
+        left: '340px', // 320px controls width + 20px margin
         width: `${size.width}px`,
         height: `${size.height}px`,
         background: 'rgba(26, 26, 46, 0.95)',
