@@ -24,12 +24,18 @@ export default function ClusteringChart({
   const [isResizing, setIsResizing] = useState(false);
 
   // Handle resize dragging
+  const startPosRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
   useEffect(() => {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(300, e.clientX - 20); // Min width 300
-      const newHeight = Math.max(250, window.innerHeight - e.clientY - 20); // Min height 250
+      const deltaX = e.clientX - startPosRef.current.x;
+      const deltaY = e.clientY - startPosRef.current.y;
+      
+      const newWidth = Math.max(300, Math.min(800, startPosRef.current.width + deltaX));
+      const newHeight = Math.max(250, Math.min(600, startPosRef.current.height + deltaY));
+      
       setSize({ width: newWidth, height: newHeight });
     };
 
@@ -152,39 +158,49 @@ export default function ClusteringChart({
       ctx.stroke();
     }
 
-    // Draw centroids
+    // Draw centroids as X marks
     if (centroids.length > 0) {
       centroids.forEach((centroid) => {
         const x = scaleX(centroid[xFeatureIdx]);
         const y = scaleY(centroid[yFeatureIdx]);
         
-        // Draw star
-        ctx.fillStyle = '#FF0000';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
+        // Draw X mark (cross)
+        ctx.strokeStyle = '#FF0000';
+        ctx.lineWidth = 3;
+        const size = 10;
+        
+        // First diagonal
+        ctx.beginPath();
+        ctx.moveTo(x - size, y - size);
+        ctx.lineTo(x + size, y + size);
+        ctx.stroke();
+        
+        // Second diagonal
+        ctx.beginPath();
+        ctx.moveTo(x + size, y - size);
+        ctx.lineTo(x - size, y + size);
+        ctx.stroke();
+        
+        // Add white outline for contrast
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 5;
+        ctx.globalAlpha = 0.3;
         
         ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-          const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-          const radius = i % 2 === 0 ? 12 : 5;
-          const px = x + Math.cos(angle) * radius;
-          const py = y + Math.sin(angle) * radius;
-          if (i === 0) {
-            ctx.moveTo(px, py);
-          } else {
-            ctx.lineTo(px, py);
-          }
-        }
-        ctx.closePath();
-        ctx.fill();
+        ctx.moveTo(x - size, y - size);
+        ctx.lineTo(x + size, y + size);
+        ctx.moveTo(x + size, y - size);
+        ctx.lineTo(x - size, y + size);
         ctx.stroke();
+        
+        ctx.globalAlpha = 1.0;
       });
 
       // Legend for centroids
       ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.font = '10px system-ui, -apple-system';
       ctx.textAlign = 'left';
-      ctx.fillText('★ Centroids', padding + 5, padding + 5);
+      ctx.fillText('✕ Centroids', padding + 5, padding + 5);
     }
 
     // Title
@@ -296,19 +312,36 @@ export default function ClusteringChart({
       <div
         onMouseDown={(e) => {
           e.preventDefault();
+          e.stopPropagation();
+          startPosRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            width: size.width,
+            height: size.height,
+          };
           setIsResizing(true);
         }}
         style={{
           position: 'absolute',
           bottom: '0',
           right: '0',
-          width: '20px',
-          height: '20px',
+          width: '24px',
+          height: '24px',
           cursor: 'nwse-resize',
-          background: 'linear-gradient(135deg, transparent 0%, transparent 50%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.2) 100%)',
-          borderBottomRightRadius: '8px',
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'flex-end',
+          padding: '4px',
         }}
-      />
+      >
+        <div style={{
+          width: '12px',
+          height: '12px',
+          borderRight: '2px solid rgba(255, 255, 255, 0.4)',
+          borderBottom: '2px solid rgba(255, 255, 255, 0.4)',
+          borderBottomRightRadius: '2px',
+        }} />
+      </div>
     </div>
   );
 }
