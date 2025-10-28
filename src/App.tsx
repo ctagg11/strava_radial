@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import RadialMapWebGL from './components/RadialMapWebGL';
+import RadialMap3D from './components/RadialMap3D';
 import Controls from './components/Controls';
 import ClusteringChart from './components/ClusteringChart';
 import ElevationProfile from './components/ElevationProfile';
@@ -19,12 +20,13 @@ function App() {
   const [animationSpeed, setAnimationSpeed] = useState(20);
   const [scrubTimeSec, setScrubTimeSec] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
-  const radialMapTimeRef = useRef<{ updateTime: (time: number) => void } | null>(null);
+  
+  // View toggle state
+  const [view3D, setView3D] = useState(false);
   
   // Clustering state
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>(['distance_miles', 'average_speed_mph']);
-  const [clusterLabels, setClusterLabels] = useState<number[]>([]);
   const [clusterCount, setClusterCount] = useState<number>(0);
   const [clusterColors, setClusterColors] = useState<string[]>([]);
   const [clusterResult, setClusterResult] = useState<ClusterResult | null>(null);
@@ -81,7 +83,7 @@ function App() {
       console.log('Fetched activities:', fetchedActivities.length);
       setActivities(fetchedActivities);
       
-      // Process activities into routes
+      // Process activities into routes (initial, without elevation)
       const processedRoutes = processActivitiesToRoutes(fetchedActivities);
       console.log('Processed routes:', processedRoutes.length);
       console.log('First route sample:', processedRoutes[0]);
@@ -93,15 +95,47 @@ function App() {
       const streams: Record<number, { time: number[]; altitude: number[] }> = {};
       
       console.log('Fetching elevation data for', ids.length, 'activities...');
+      let streamsAttached = 0;
       await StravaService.fetchStreamsBatch(ids, (id, stream) => {
         if (stream) {
           streams[id] = { time: stream.time, altitude: stream.altitude };
+          // Attach streams to the activity object for 3D view
+          const activity = fetchedActivities.find((a: StravaActivity) => a.id === id);
+          if (activity) {
+            activity.streams = {
+              time: stream.time,
+              altitude: stream.altitude,
+              distance: stream.distance
+            };
+            streamsAttached++;
+            if (streamsAttached <= 3) {
+              console.log(`Attached streams to activity ${activity.name}:`, {
+                altitudeLength: stream.altitude.length,
+                firstAltitudes: stream.altitude.slice(0, 5)
+              });
+            }
+          } else {
+            console.warn(`Could not find activity with id ${id} in fetchedActivities`);
+          }
+        } else {
+          console.warn(`No stream data returned for activity id ${id}`);
         }
       });
       
       setElevationStreams(streams);
       setLoadingStreams(false);
-      console.log('Loaded elevation data for', Object.keys(streams).length, 'activities');
+      console.log(`Loaded elevation data for ${Object.keys(streams).length} activities`);
+      console.log(`Successfully attached streams to ${streamsAttached} activities`);
+      
+      // Reprocess routes with elevation data attached
+      const routesWithElevation = processActivitiesToRoutes(fetchedActivities);
+      setRoutes(routesWithElevation);
+      console.log('Reprocessed routes with elevation data');
+      
+      // Verify streams are in the routes
+      if (routesWithElevation.length > 0) {
+        console.log('First route after reprocessing has streams:', !!routesWithElevation[0].activity.streams);
+      }
     } catch (error) {
       console.error('Error fetching activities:', error);
       alert('Failed to fetch activities. Please try again.');
@@ -230,7 +264,6 @@ function App() {
       console.log('All silhouette scores:', result.silhouetteScores);
       
       // Update state
-      setClusterLabels(result.labels);
       setClusterCount(result.k);
       setClusterResult(result);
       
@@ -255,7 +288,6 @@ function App() {
       // Reset to default colors
       const newRoutes = processActivitiesToRoutes(activities);
       setRoutes(newRoutes);
-      setClusterLabels([]);
       setClusterCount(0);
       setClusterColors([]);
       setClusterResult(null);
@@ -342,36 +374,54 @@ function App() {
         onApplyClustering={handleApplyClustering}
         clusterCount={clusterCount}
         clusterColors={clusterColors}
+        view3D={view3D}
+        onViewToggle={setView3D}
       />
-      <RadialMapWebGL
-        routes={routes}
-        isAnimating={isAnimating}
-        animationSpeed={animationSpeed}
-        scrubTimeSec={scrubTimeSec}
-        onAnimationComplete={handleAnimationComplete}
-        clusterFeatures={selectedFeatures}
-        clusterEnabled={clusteringEnabled}
-      />
-      {/* Elevation Profile - always show when routes exist */}
-      {routes.length > 0 && (
-        <ElevationProfile
-          routes={routes}
-          currentTime={scrubTimeSec ?? 0}
-          maxDuration={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
-          elevationData={elevationStreams}
-        />
-      )}
       
-      {/* Clustering Chart - show when clustering is enabled */}
-      {clusteringEnabled && clusterResult && clusterResult.rawData && clusterResult.silhouetteScores && (
-        <ClusteringChart
-          features={selectedFeatures}
-          data={clusterResult.rawData}
-          labels={clusterResult.labels}
-          centroids={clusterResult.centroids}
-          silhouetteScores={clusterResult.silhouetteScores}
-          selectedK={clusterResult.k}
+      {/* View Toggle - conditionally render 2D or 3D view */}
+      {view3D ? (
+        <RadialMap3D
+          routes={routes}
+          isAnimating={isAnimating}
+          animationSpeed={animationSpeed}
+          scrubTimeSec={scrubTimeSec}
+          onAnimationComplete={handleAnimationComplete}
+          clusterFeatures={selectedFeatures}
+          clusterEnabled={clusteringEnabled}
         />
+      ) : (
+        <>
+          <RadialMapWebGL
+            routes={routes}
+            isAnimating={isAnimating}
+            animationSpeed={animationSpeed}
+            scrubTimeSec={scrubTimeSec}
+            onAnimationComplete={handleAnimationComplete}
+            clusterFeatures={selectedFeatures}
+            clusterEnabled={clusteringEnabled}
+          />
+          {/* Elevation Profile - only show in 2D view */}
+          {routes.length > 0 && (
+            <ElevationProfile
+              routes={routes}
+              currentTime={scrubTimeSec ?? 0}
+              maxDuration={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
+              elevationData={elevationStreams}
+            />
+          )}
+          
+          {/* Clustering Chart - only show in 2D view */}
+          {clusteringEnabled && clusterResult && clusterResult.rawData && clusterResult.silhouetteScores && (
+            <ClusteringChart
+              features={selectedFeatures}
+              data={clusterResult.rawData}
+              labels={clusterResult.labels}
+              centroids={clusterResult.centroids}
+              silhouetteScores={clusterResult.silhouetteScores}
+              selectedK={clusterResult.k}
+            />
+          )}
+        </>
       )}
     </div>
   );

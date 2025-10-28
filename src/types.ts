@@ -15,6 +15,11 @@ export interface StravaActivity {
   average_speed?: number;
   max_speed?: number;
   trainer?: boolean;
+  streams?: {
+    time: number[];
+    altitude: number[];
+    distance?: number[];
+  };
 }
 
 export interface ActivityPoint {

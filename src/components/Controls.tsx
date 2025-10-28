@@ -24,6 +24,8 @@ interface ControlsProps {
   onApplyClustering: () => void;
   clusterCount?: number;
   clusterColors?: string[];
+  view3D: boolean;
+  onViewToggle: (view3D: boolean) => void;
 }
 
 export default function Controls({
@@ -50,6 +52,8 @@ export default function Controls({
   onApplyClustering,
   clusterCount,
   clusterColors,
+  view3D,
+  onViewToggle,
 }: ControlsProps) {
   const timelineSliderRef = useRef<HTMLInputElement>(null);
 
@@ -92,8 +96,29 @@ export default function Controls({
       </div>
 
       {isAuthenticated && activityCount > 0 && (
-        <div className="controls-section">
-          <div className="section-label">Animation</div>
+        <>
+          <div className="controls-section">
+            <div className="section-label">View</div>
+            <div className="button-group">
+              <button 
+                onClick={() => onViewToggle(false)} 
+                className={`btn ${!view3D ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ flex: 1 }}
+              >
+                2D
+              </button>
+              <button 
+                onClick={() => onViewToggle(true)} 
+                className={`btn ${view3D ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ flex: 1 }}
+              >
+                3D
+              </button>
+            </div>
+          </div>
+
+          <div className="controls-section">
+            <div className="section-label">Animation</div>
           <div className="button-group">
             <button onClick={onStartAnimation} disabled={isAnimating} className="btn btn-icon">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -140,10 +165,9 @@ export default function Controls({
             </div>
           )}
         </div>
-      )}
 
-      <div className="controls-section">
-        <div className="section-label">Clustering</div>
+        <div className="controls-section">
+          <div className="section-label">Clustering</div>
         <div className="clustering-toggle">
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
             <input
@@ -207,7 +231,9 @@ export default function Controls({
             )}
           </div>
         )}
-      </div>
+        </div>
+      </>
+      )}
     </div>
   );
 }
