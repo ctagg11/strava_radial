@@ -5,9 +5,10 @@ interface ElevationProfileProps {
   routes: RouteData[];
   currentTime: number;
   maxDuration: number;
+  elevationData: Record<number, { time: number[]; altitude: number[] }>;
 }
 
-export default function ElevationProfile({ routes, currentTime, maxDuration }: ElevationProfileProps) {
+export default function ElevationProfile({ routes, currentTime, maxDuration, elevationData }: ElevationProfileProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 400, height: 200 });
@@ -58,7 +59,7 @@ export default function ElevationProfile({ routes, currentTime, maxDuration }: E
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, width, height);
 
-    // Calculate elevation profiles for each route
+    // Calculate elevation profiles for each route using real data
     const profiles: Array<{ 
       route: RouteData; 
       points: Array<{ time: number; elevation: number }>;
@@ -67,29 +68,44 @@ export default function ElevationProfile({ routes, currentTime, maxDuration }: E
 
     routes.forEach(route => {
       const activity = route.activity;
-      const duration = activity.moving_time || (activity.distance / 100);
+      const streamData = elevationData[activity.id];
       
-      // Use simplified elevation calculation based on elevation gain
-      // We'll interpolate assuming linear elevation change (can be improved with actual stream data)
-      const elevGain = activity.total_elevation_gain || 0;
-      const numPoints = Math.min(100, route.points.length);
-      const points: Array<{ time: number; elevation: number }> = [];
-      
-      // Simple model: assume elevation changes happen throughout the ride
-      // Start at 0, end at net elevation gain
-      for (let i = 0; i <= numPoints; i++) {
-        const t = (i / numPoints) * duration;
-        // Simple sine wave approximation for ups and downs
-        const progress = i / numPoints;
-        const elevation = elevGain * progress + Math.sin(progress * Math.PI * 4) * (elevGain * 0.2);
-        points.push({ time: t, elevation });
+      if (streamData && streamData.time && streamData.altitude) {
+        // Use real elevation data from Strava
+        const { time: times, altitude: altitudes } = streamData;
+        
+        // Calculate relative elevation (start at 0)
+        const startElevation = altitudes[0];
+        const points: Array<{ time: number; elevation: number }> = times.map((t, i) => ({
+          time: t,
+          elevation: altitudes[i] - startElevation // Relative to start
+        }));
+        
+        profiles.push({
+          route,
+          points,
+          color: route.color
+        });
+      } else {
+        // Fallback: use simplified model if no stream data
+        const duration = activity.moving_time || (activity.distance / 100);
+        const elevGain = activity.total_elevation_gain || 0;
+        const numPoints = Math.min(50, route.points.length);
+        const points: Array<{ time: number; elevation: number }> = [];
+        
+        for (let i = 0; i <= numPoints; i++) {
+          const t = (i / numPoints) * duration;
+          const progress = i / numPoints;
+          const elevation = elevGain * progress + Math.sin(progress * Math.PI * 4) * (elevGain * 0.2);
+          points.push({ time: t, elevation });
+        }
+        
+        profiles.push({
+          route,
+          points,
+          color: route.color
+        });
       }
-      
-      profiles.push({
-        route,
-        points,
-        color: route.color
-      });
     });
 
     // Find elevation range
@@ -219,7 +235,7 @@ export default function ElevationProfile({ routes, currentTime, maxDuration }: E
     ctx.textBaseline = 'top';
     ctx.fillText('Elevation Profile', width / 2, 8);
 
-  }, [routes, currentTime, maxDuration, size]);
+  }, [routes, currentTime, maxDuration, size, elevationData]);
 
   if (routes.length === 0) {
     return null;

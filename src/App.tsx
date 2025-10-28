@@ -12,8 +12,9 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activities, setActivities] = useState<StravaActivity[]>([]);
   const [routes, setRoutes] = useState<RouteData[]>([]);
-  // const [streams, setStreams] = useState<Record<number, ActivityStream | undefined>>({});
+  const [elevationStreams, setElevationStreams] = useState<Record<number, { time: number[]; altitude: number[] }>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStreams, setLoadingStreams] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationSpeed, setAnimationSpeed] = useState(20);
   const [scrubTimeSec, setScrubTimeSec] = useState<number | null>(null);
@@ -86,13 +87,21 @@ function App() {
       console.log('First route sample:', processedRoutes[0]);
       setRoutes(processedRoutes);
 
-      // Fetch altitude/time streams with batching and progress
-      // const ids = fetchedActivities.map(a => a.id);
-      // const collected: Record<number, ActivityStream | undefined> = {};
-      // await StravaService.fetchStreamsBatch(ids, (id, stream) => {
-      //   if (stream) collected[id] = stream;
-      //   setStreams({ ...collected });
-      // });
+      // Fetch elevation streams in background
+      setLoadingStreams(true);
+      const ids = processedRoutes.map(r => r.activity.id);
+      const streams: Record<number, { time: number[]; altitude: number[] }> = {};
+      
+      console.log('Fetching elevation data for', ids.length, 'activities...');
+      await StravaService.fetchStreamsBatch(ids, (id, stream) => {
+        if (stream) {
+          streams[id] = { time: stream.time, altitude: stream.altitude };
+        }
+      });
+      
+      setElevationStreams(streams);
+      setLoadingStreams(false);
+      console.log('Loaded elevation data for', Object.keys(streams).length, 'activities');
     } catch (error) {
       console.error('Error fetching activities:', error);
       alert('Failed to fetch activities. Please try again.');
@@ -320,7 +329,7 @@ function App() {
         onScrubChange={(s) => { setScrubTimeSec(s); setIsAnimating(false); }}
         onScrubDirect={handleScrubDirect}
         isAuthenticated={isAuthenticated}
-        isLoading={isLoading}
+        isLoading={isLoading || loadingStreams}
         isAnimating={isAnimating}
         animationSpeed={animationSpeed}
         activityCount={activities.length}
@@ -349,6 +358,7 @@ function App() {
           routes={routes}
           currentTime={scrubTimeSec ?? 0}
           maxDuration={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
+          elevationData={elevationStreams}
         />
       )}
       
