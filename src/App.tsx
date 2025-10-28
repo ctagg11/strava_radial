@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import RadialMapWebGL from './components/RadialMapWebGL';
 import Controls from './components/Controls';
 import ClusteringChart from './components/ClusteringChart';
+import ElevationProfile from './components/ElevationProfile';
 import { StravaService } from './stravaService';
 import { StravaActivity, RouteData } from './types';
-// import ElevationChart from './components/ElevationChart';
 import { decodePolyline } from './utils/polyline';
 import { clusterActivities, getClusterColor, ClusterResult } from './utils/clustering';
 
@@ -343,6 +343,16 @@ function App() {
         clusterFeatures={selectedFeatures}
         clusterEnabled={clusteringEnabled}
       />
+      {/* Elevation Profile - always show when routes exist */}
+      {routes.length > 0 && (
+        <ElevationProfile
+          routes={routes}
+          currentTime={scrubTimeSec ?? 0}
+          maxDuration={routes.length ? Math.max(...routes.map(r => r.activity.moving_time || r.activity.distance / 100)) : 0}
+        />
+      )}
+      
+      {/* Clustering Chart - show when clustering is enabled */}
       {clusteringEnabled && clusterResult && clusterResult.rawData && clusterResult.silhouetteScores && (
         <ClusteringChart
           features={selectedFeatures}

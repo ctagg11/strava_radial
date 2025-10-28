@@ -229,7 +229,7 @@ export default function ClusteringChart({
       ref={containerRef}
       style={{
         position: 'fixed',
-        bottom: '20px',
+        bottom: '240px', // Position above elevation profile
         right: '20px',
         width: `${size.width}px`,
         height: `${size.height}px`,
