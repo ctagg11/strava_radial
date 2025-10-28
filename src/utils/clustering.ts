@@ -22,6 +22,22 @@ export interface ClusterResult {
 }
 
 /**
+ * Seeded random number generator for deterministic clustering
+ */
+class SeededRandom {
+  private seed: number;
+
+  constructor(seed: number) {
+    this.seed = seed;
+  }
+
+  next(): number {
+    this.seed = (this.seed * 9301 + 49297) % 233280;
+    return this.seed / 233280;
+  }
+}
+
+/**
  * Standardize features (Z-score normalization)
  */
 function standardize(data: number[][]): { scaled: number[][], means: number[], stds: number[] } {
@@ -67,18 +83,19 @@ function euclideanDistance(a: number[], b: number[]): number {
 }
 
 /**
- * K-Means clustering algorithm
+ * K-Means clustering algorithm with deterministic initialization
  */
-export function kMeans(data: number[][], k: number, maxIterations = 100): { labels: number[], centroids: number[][] } {
+export function kMeans(data: number[][], k: number, maxIterations = 100, seed = 42): { labels: number[], centroids: number[][] } {
   const n = data.length;
   const d = data[0].length;
+  const rng = new SeededRandom(seed);
 
-  // Initialize centroids randomly (k-means++)
+  // Initialize centroids deterministically (k-means++)
   const centroids: number[][] = [];
   const usedIndices = new Set<number>();
   
-  // First centroid is random
-  const firstIdx = Math.floor(Math.random() * n);
+  // First centroid is deterministic
+  const firstIdx = Math.floor(rng.next() * n);
   centroids.push([...data[firstIdx]]);
   usedIndices.add(firstIdx);
 
@@ -93,7 +110,7 @@ export function kMeans(data: number[][], k: number, maxIterations = 100): { labe
     const probabilities = distances.map(d => d / sum);
     
     // Select next centroid based on probability distribution
-    let rand = Math.random();
+    let rand = rng.next();
     let cumulativeProb = 0;
     let selectedIdx = 0;
     for (let i = 0; i < n; i++) {
