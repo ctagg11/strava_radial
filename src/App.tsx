@@ -8,6 +8,7 @@ import { StravaService } from './stravaService';
 import { StravaActivity, RouteData } from './types';
 import { decodePolyline } from './utils/polyline';
 import { clusterActivities, getClusterColor, ClusterResult } from './utils/clustering';
+import { findSimilarRoutes, getRouteMatchColor, RouteMatchResult } from './utils/routeMatching';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -30,6 +31,11 @@ function App() {
   const [clusterCount, setClusterCount] = useState<number>(0);
   const [clusterColors, setClusterColors] = useState<string[]>([]);
   const [clusterResult, setClusterResult] = useState<ClusterResult | null>(null);
+  
+  // Route matching state
+  const [routeMatchingEnabled, setRouteMatchingEnabled] = useState(false);
+  const [matchThreshold, setMatchThreshold] = useState<number>(0.25); // 0-1, lower = stricter
+  const [matchResult, setMatchResult] = useState<RouteMatchResult | null>(null);
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -144,7 +150,7 @@ function App() {
     }
   };
 
-  const processActivitiesToRoutes = (activities: StravaActivity[], clusterLabels?: number[]): RouteData[] => {
+  const processActivitiesToRoutes = (activities: StravaActivity[], clusterLabels?: number[], matchLabels?: number[]): RouteData[] => {
     console.log('Sample activity structure:', activities[0]);
     
     // Filter activities: only cycling, with polyline data, and not virtual
@@ -207,9 +213,12 @@ function App() {
       
       console.log(`Activity: ${activity.name}, Points: ${points.length}, Start: [${startPoint.lat}, ${startPoint.lng}]`);
       
-      // Determine color based on clustering or activity type
+      // Determine color based on: route matching > clustering > activity type
       let color: string;
-      if (clusterLabels && clusterLabels[i] !== undefined) {
+      if (matchLabels && matchLabels[i] !== undefined) {
+        // Use route matching color (priority - shows repeated routes)
+        color = getRouteMatchColor(matchLabels[i]);
+      } else if (clusterLabels && clusterLabels[i] !== undefined) {
         // Use cluster color
         color = getClusterColor(clusterLabels[i], clusterCount);
       } else {
@@ -285,14 +294,59 @@ function App() {
   const handleClusteringToggle = useCallback((enabled: boolean) => {
     setClusteringEnabled(enabled);
     if (!enabled) {
-      // Reset to default colors
-      const newRoutes = processActivitiesToRoutes(activities);
-      setRoutes(newRoutes);
+      // Reset to default colors (unless route matching is enabled)
+      if (!routeMatchingEnabled) {
+        const newRoutes = processActivitiesToRoutes(activities);
+        setRoutes(newRoutes);
+      }
       setClusterCount(0);
       setClusterColors([]);
       setClusterResult(null);
     }
-  }, [activities]);
+  }, [activities, routeMatchingEnabled]);
+
+  const handleApplyRouteMatching = useCallback(() => {
+    if (routes.length === 0) {
+      alert('Please load activities first.');
+      return;
+    }
+
+    try {
+      console.log(`Finding similar routes with threshold ${matchThreshold}...`);
+      
+      // Extract GPS points from routes
+      const gpsPoints = routes.map(route => route.points);
+      
+      // Run route matching
+      const result = findSimilarRoutes(gpsPoints, matchThreshold, 2);
+      
+      console.log(`Route matching complete: ${result.patterns} patterns, ${result.uniqueRoutes} unique routes`);
+      
+      // Update state
+      setMatchResult(result);
+      
+      // Reprocess routes with match colors
+      const newRoutes = processActivitiesToRoutes(activities, undefined, result.labels);
+      setRoutes(newRoutes);
+      
+      alert(`Found ${result.patterns} repeated route patterns!\n${result.uniqueRoutes} unique routes`);
+    } catch (error) {
+      console.error('Route matching error:', error);
+      alert('Failed to find similar routes. Please try again.');
+    }
+  }, [routes, activities, matchThreshold]);
+
+  const handleRouteMatchingToggle = useCallback((enabled: boolean) => {
+    setRouteMatchingEnabled(enabled);
+    if (!enabled) {
+      // Reset to default colors (unless clustering is enabled)
+      if (!clusteringEnabled) {
+        const newRoutes = processActivitiesToRoutes(activities);
+        setRoutes(newRoutes);
+      }
+      setMatchResult(null);
+    }
+  }, [activities, clusteringEnabled]);
 
   // Continuous timeline: unify play and scrub into a single time state that advances at animationSpeed
   // Optimized: only update React state every 50ms (20fps) to reduce renders
