@@ -428,6 +428,12 @@ function App() {
         onApplyClustering={handleApplyClustering}
         clusterCount={clusterCount}
         clusterColors={clusterColors}
+        routeMatchingEnabled={routeMatchingEnabled}
+        onRouteMatchingToggle={handleRouteMatchingToggle}
+        matchThreshold={matchThreshold}
+        onMatchThresholdChange={setMatchThreshold}
+        onApplyRouteMatching={handleApplyRouteMatching}
+        matchResult={matchResult}
         view3D={view3D}
         onViewToggle={setView3D}
       />

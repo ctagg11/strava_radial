@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { RouteMatchResult } from '../utils/routeMatching';
 
 interface ControlsProps {
   onLogin: () => void;
@@ -24,6 +25,12 @@ interface ControlsProps {
   onApplyClustering: () => void;
   clusterCount?: number;
   clusterColors?: string[];
+  routeMatchingEnabled: boolean;
+  onRouteMatchingToggle: (enabled: boolean) => void;
+  matchThreshold: number;
+  onMatchThresholdChange: (threshold: number) => void;
+  onApplyRouteMatching: () => void;
+  matchResult: RouteMatchResult | null;
   view3D: boolean;
   onViewToggle: (view3D: boolean) => void;
 }
@@ -52,6 +59,12 @@ export default function Controls({
   onApplyClustering,
   clusterCount,
   clusterColors,
+  routeMatchingEnabled,
+  onRouteMatchingToggle,
+  matchThreshold,
+  onMatchThresholdChange,
+  onApplyRouteMatching,
+  matchResult,
   view3D,
   onViewToggle,
 }: ControlsProps) {
@@ -231,6 +244,67 @@ export default function Controls({
             )}
           </div>
         )}
+
+        <div className="controls-section">
+          <div className="section-label">Route Matching</div>
+          <div className="clustering-toggle">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={routeMatchingEnabled}
+                onChange={(e) => onRouteMatchingToggle(e.target.checked)}
+              />
+              <span>Find Similar Routes</span>
+            </label>
+          </div>
+
+          {routeMatchingEnabled && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                Similarity Threshold
+              </div>
+              <div className="speed-control">
+                <input
+                  type="range"
+                  min="0.1"
+                  max="0.5"
+                  step="0.05"
+                  value={matchThreshold}
+                  onChange={(e) => onMatchThresholdChange(Number(e.target.value))}
+                  className="speed-slider"
+                />
+                <div className="speed-value">{matchThreshold.toFixed(2)}</div>
+              </div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.25rem' }}>
+                Lower = stricter matching
+              </div>
+              <button
+                onClick={onApplyRouteMatching}
+                className="btn btn-primary"
+                style={{ marginTop: '0.75rem', width: '100%' }}
+              >
+                Find Repeated Routes
+              </button>
+              {matchResult && (
+                <div className="legend" style={{ marginTop: '0.75rem' }}>
+                  <div style={{ marginBottom: '0.35rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                    {matchResult.patterns} Patterns, {matchResult.uniqueRoutes} Unique
+                  </div>
+                  {matchResult.patternColors.map((color, i) => (
+                    <div key={i} className="legend-item">
+                      <span className="legend-color" style={{ backgroundColor: color }}></span>
+                      <span>Pattern {i + 1}</span>
+                    </div>
+                  ))}
+                  <div className="legend-item">
+                    <span className="legend-color" style={{ backgroundColor: '#808080' }}></span>
+                    <span>Unique Routes</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         </div>
       </>
       )}
